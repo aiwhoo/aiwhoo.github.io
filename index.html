@@ -1,164 +1,185 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>InkScape - Learn Chinese with Pandas!</title>
-  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
-  <style>
-    body {
-      font-family: 'Comic Neue', cursive;
-      background: url('https://images.unsplash.com/photo-1601455763553-e2ba0c0163a2?fit=crop&w=1600&q=80') no-repeat center center fixed;
-      background-size: cover;
-      color: #3b1e00;
-      margin: 0;
-      padding: 0;
-    }
+<html>
+	<head>
+		<script src="https://unpkg.com/kontra@10.0.2/kontra.min.js"></script> 
+		<style>
+		    canvas {
+		      display: block;
+		      margin: auto;
+		      background: #88ccee;
+		      border: 3px solid #000;
+		    }
+		</style>
+	</head>
+	<body>
+		<canvas id="game" width="800" height="600"></canvas>
+		<script type="text/javascript">
+			function isoverlapping(min1, max1, min2, max2){
+				return max1 >= min2 && max2 >= min1
+			}
 
-    .content {
-      background: rgba(255, 248, 236, 0.95);
-      border: 4px solid #b03a2e;
-      max-width: 800px;
-      margin: 50px auto;
-      border-radius: 20px;
-      padding: 30px;
-      text-align: center;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    }
+			function iscolliding(sprite1, sprite2){
+				return isoverlapping(sprite1.x, sprite1.x + sprite1.width, sprite2.x, sprite2.x + sprite2.width) &&  isoverlapping(sprite1.y, sprite1.y + sprite1.height, sprite2.y, sprite2.y + sprite2.height)
+			}
+		</script>
+		<script>
 
-    h1 {
-      color: #b03a2e;
-      font-size: 2.5rem;
-      margin-bottom: 10px;
-    }
+			 let { init, Sprite, GameLoop, initKeys, keyPressed, collides } = kontra;
+			 let { canvas, context} = init();
+			 initKeys();
+			  // Load image assets (replace these paths with your own)
+			  kontra.load(
+			  	 'background.png',
+			    'player.png',   // Your small fish
+			    'enemy_small.png',
+			    'enemy_big.png'
+			  ).then(images => {
+			    let [backgroundImage,playerImage, enemySmallImage, enemyBigImage] = images;
 
-    p {
-      font-size: 1.2rem;
-      line-height: 1.6;
-    }
+			    // Game state
+			    let score = 0;
+			    let gameOver = false;
+			    let enemies = [];
+			    let spawnTimer = 0;
 
-    #character-target-div-3 {
-      margin: 30px 0;
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 15px;
-      padding: 15px;
-      background: #fff8e7;
-      border: 2px dashed #e0b589;
-      border-radius: 12px;
-    }
+			    // Score display
+			    const scoreText = kontra.Text({
+			      text: 'Score: 0',
+			      font: '24px Arial',
+			      color: 'black',
+			      x: 10,
+			      y: 10
+			    });
 
-    input[type="text"] {
-      font-size: 1.5rem;
-      padding: 10px;
-      width: 100px;
-      margin-right: 10px;
-      border: 2px solid #b03a2e;
-      border-radius: 8px;
-      text-align: center;
-    }
+			    const gameOverText = kontra.Text({
+			      text: 'Game Over! Press R to Restart',
+			      font: '32px Arial',
+			      color: 'red',
+			      x: canvas.width / 2,
+			      y: canvas.height / 2,
+			      anchor: { x: 0.5, y: 0.5 },
+			      opacity: 0
+			    });
 
-    button {
-      background-color: #b03a2e;
-      color: white;
-      border: none;
-      padding: 10px 15px;
-      margin: 5px;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
+			   	const background = kontra.Sprite({
+				  x: 0,
+				  y: 0,
+				  image: backgroundImage,
+				  render() {
+				    // Draw image twice side-by-side for seamless loop
+				    this.context.drawImage(this.image, this.x, this.y, canvas.width, canvas.height);
+				  }
+				});
+			    // Player Sprite
+			    let player = kontra.Sprite({
+			      x: 100,
+			      y: 300,
+			      width: 40,
+			      height: 30,
+			      image: playerImage,
+			   	  update() {
+			        if (keyPressed('arrowleft')) {
+					    this.x = this.x - 2;
+					 }
+					else if(keyPressed('arrowright')){
+					 	this.x = this.x + 2;
+					}
+					if(keyPressed('arrowdown')){
+					 	this.y = this.y + 2;
+					}
+					else if(keyPressed('arrowup')){
+					 	this.y = this.y - 2;
+					}
+					
+			        this.x = Math.max(0, Math.min(canvas.width - this.width, this.x));
+			        this.y = Math.max(0, Math.min(canvas.height - this.height, this.y));
+			      }
+			    });
 
-    button:hover {
-      background-color: #922b21;
-    }
+			    // Create enemy fish
+			    function createEnemy() {
+			      const isSmall = Math.random() < 0.7;
+			      const width = isSmall ? 30 : 60;
+			      const height = width * 0.75;
+			      return kontra.Sprite({
+			        x: canvas.width + Math.random() * 100,
+			        y: Math.random() * (canvas.height - height),
+			        width: width,
+			        height: height,
+			        dx: -Math.random() * 2 - 1,
+			        image: isSmall ? enemySmallImage : enemyBigImage,
+			        isSmall: isSmall,
+			        scaleX: -1, 
+  					anchor: { x: 0.5, y: 0.5 },
+			        update() {
+			          this.advance();
+			          if (this.x + this.width < 0) this.ttl = 0;
+			        }
+			      });
+			    }
 
-    #input::placeholder {
-      color: #aaa;
-    }
+			    function resetGame() {
+			      score = 0;
+			      gameOver = false;
+			      enemies = [];
+			      player.width = 40;
+			      player.height = 30;
+			      player.x = 100;
+			      player.y = 300;
+			      scoreText.text = 'Score: 0';
+			      gameOverText.opacity = 0;
+			    }
 
-    .lantern {
-      font-size: 1.8rem;
-      margin: 10px;
-      animation: float 2s ease-in-out infinite alternate;
-    }
+			    // Main game loop
+			    const loop = kontra.GameLoop({
+			      update() {
+			        if (gameOver) {
+			          if (keyPressed('r')) resetGame();
+			          return;
+			        }
 
-    @keyframes float {
-      from { transform: translateY(0); }
-      to { transform: translateY(-10px); }
-    }
-  </style>
-</head>
-<body>
+				
+			        player.update();
+			        scoreText.update();
 
-  <div class="content" id="About">
-    <h1>🐼 InkScape: Learn Chinese with Pandas!</h1>
-    <p>
-      Type any Chinese character in the box below.
-      <br>
-      Watch it come to life — then quiz yourself!
-    </p>
+			        spawnTimer--;
+			        if (spawnTimer <= 0) {
+			          enemies.push(createEnemy());
+			          spawnTimer = 30;
+			        }
 
-    <div id="character-target-div-3"></div>
+			        enemies.forEach(e => e.update());
+			        enemies = enemies.filter(e => e.isAlive());
 
-    <input type="text" id="input" placeholder="你好" value="写中文">
-    <button id="submit">Update Character</button>
-    <button id="animate-all">Animate</button>
-    <div class="lantern">🏮 🧧 🎐</div>
-  </div>
+			        // Collision check
+			        enemies.forEach(e => {
+					  if (iscolliding(player, e)) {
+					    if (e.isSmall || e.width < player.width) {
+					      score++;
+					      player.width += 2;
+					      player.height += 1.5;
+					      scoreText.text = 'Score: ' + score;
+					      e.ttl = 0;
+					    } else {
+					      gameOver = true;
+					      gameOverText.opacity = 1;
+					    }
+					  }
+					});	
+			      },
+			      render() {
+			      	background.render();
+			        player.render();
+			        enemies.forEach(e => e.render());
+			        scoreText.render();
+			        gameOverText.render();
+			      }
+			    });
 
-  <script>
-    var writers = [];
+			    loop.start();
+			  });
+						
+		</script>
 
-    function createWriters(input) {
-      var container = document.getElementById('character-target-div-3');
-      container.innerHTML = '';
-      writers = [];
+	</body>
 
-      for (var i = 0; i < input.length; i++) {
-        var charDiv = document.createElement('div');
-        charDiv.id = 'character-' + i;
-        charDiv.style.display = 'inline-block';
-        container.appendChild(charDiv);
-
-        var writer = HanziWriter.create(charDiv.id, input[i], {
-          width: 150,
-          height: 150,
-          padding: 5,
-          showCharacter: true,
-        });
-        writer.quiz();
-        writers.push(writer);
-      }
-    }
-
-    function animateSequentially(index) {
-      if (index >= writers.length) return;
-
-      writers[index].animateCharacter({
-        onComplete: function () {
-          animateSequentially(index + 1);
-        },
-      });
-    }
-
-    document.getElementById('animate-all').addEventListener('click', function () {
-      var inputChar = document.getElementById('input').value.trim();
-      if (inputChar) {
-        createWriters(inputChar);
-        animateSequentially(0);
-      }
-    });
-
-    document.getElementById('submit').addEventListener('click', function () {
-      var inputChar = document.getElementById('input').value.trim();
-      if (inputChar) {
-        createWriters(inputChar);
-      }
-    });
-  </script>
-</body>
 </html>
